@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Token Governance DApp</title>
+  <script src="https://cdn.jsdelivr.net/npm/web3@1.5.2/dist/web3.min.js"></script>
+</head>
+<body>
+  <h1>Token Governance DApp</h1>
+  
+  <!-- Section to display connected account and token balance -->
+  <div>
+    <button onclick="connectWallet()">Connect Wallet</button>
+    <p>Connected Account: <span id="accountAddress"></span></p>
+    <p>Token Balance: <span id="tokenBalance"></span></p>
+  </div>
+
+  <!-- Section to Stake Tokens -->
+  <div>
+    <h3>Stake Tokens</h3>
+    <input type="number" id="stakeAmount" placeholder="Enter amount to stake">
+    <button onclick="stakeTokens()">Stake</button>
+  </div>
+
+  <!-- Section to become a juror -->
+  <div>
+    <h3>Become a Juror</h3>
+    <button onclick="becomeJuror()">Become Juror</button>
+  </div>
+
+  <!-- Section to vote on a challenge -->
+  <div>
+    <h3>Vote on Challenge</h3>
+    <input type="text" id="challengeId" placeholder="Enter Challenge ID">
+    <button onclick="voteOnChallenge(true)">Vote Yes</button>
+    <button onclick="voteOnChallenge(false)">Vote No</button>
+  </div>
+
+  <script>
+    let web3;
+    let contract;
+    let account;
+    
+    const contractAddress = "0xYourSmartContractAddress";  // Replace with your contract's address
+    const abi = [
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "initialSupply",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "_inflationRate",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "juror",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "stakedAmount",
+				"type": "uint256"
+			}
+		],
+		"name": "JurorSelected",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "from",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "value",
+				"type": "uint256"
+			}
+		],
+		"name": "Stake",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "from",
+				"type": "address"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "to",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "value",
+				"type": "uint256"
+			}
+		],
+		"name": "Transfer",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"internalType": "bool",
+				"name": "majorityWon",
+				"type": "bool"
+			}
+		],
+		"name": "VoteOutcome",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "balances",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "challengeVerdict",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "decimals",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "account",
+				"type": "address"
+			}
+		],
+		"name": "getBalance",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "account",
+				"type": "address"
+			}
+		],
+		"name": "getStake",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "inflationRate",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "isJuror",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "minStakeToBecomeJuror",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "mintNewTokens",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "name",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "",
+				"type": "string"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "owner",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "bool",
+				"name": "majorityWon",
+				"type": "bool"
+			},
+			{
+				"internalType": "address[]",
+				"name": "jurors",
+				"type": "address[]"
+			},
+			{
+				"internalType": "uint256[]",
+				"name": "stakes",
+				"type": "uint256[]"
+			}
+		],
+		"name": "penalizeMinorityAndRewardMajority",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "selectJuror",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "value",
+				"type": "uint256"
+			}
+		],
+		"name": "stakeTokens",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "stakedTokens",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "symbol",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "",
+				"type": "string"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "totalSupply",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "to",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "value",
+				"type": "uint256"
+			}
+		],
+		"name": "transfer",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "bool",
+				"name": "voteOutcome",
+				"type": "bool"
+			}
+		],
+		"name": "vote",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	}
+];
+
+    async function connectWallet() {
+      if (window.ethereum) {
+        web3 = new Web3(window.ethereum);
+        await window.ethereum.enable();  // Request access to the user's wallet
+        const accounts = await web3.eth.getAccounts();
+        account = accounts[0];
+        document.getElementById('accountAddress').innerText = account;
+        contract = new web3.eth.Contract(abi, contractAddress);
+        updateTokenBalance();
+      } else {
+        alert('Please install MetaMask!');
+      }
+    }
+
+    async function updateTokenBalance() {
+      const balance = await contract.methods.balanceOf(account).call();
+      document.getElementById('tokenBalance').innerText = balance;
+    }
+
+    async function stakeTokens() {
+  const amount = document.getElementById('stakeAmount').value;
+  
+  if (!amount || amount <= 0) {
+    alert("Please enter a valid amount to stake.");
+    return;
+  }
+
+  try {
+    await contract.methods.stakeTokens(amount).send({ from: account });
+    alert("Tokens staked successfully.");
+    updateTokenBalance(); // Optionally refresh the token balance after staking
+  } catch (error) {
+    console.error("Error staking tokens:", error);
+    alert("An error occurred while staking tokens.");
+  }
+}
+
+
+    async function becomeJuror() {
+      await contract.methods.becomeJuror().send({ from: account });
+      alert("You are now a juror!");
+    }
+
+    async function voteOnChallenge(vote) {
+      const challengeId = document.getElementById('challengeId').value;
+      await contract.methods.voteOnChallenge(challengeId, vote).send({ from: account });
+      alert("Vote cast successfully!");
+    }
+  </script>
+</body>
+</html>
